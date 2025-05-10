@@ -1,144 +1,354 @@
 package client.ui;
 
 import game.go.model.Point;
-import game.go.model.Stone;
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.GradientPaint;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.geom.Ellipse2D;
-import java.util.logging.Logger;
+import java.awt.*;
 import javax.swing.JPanel;
 
 /**
- * Go tahtası görselleştirme paneli
- * İyileştirilmiş görünüm ve kullanıcı deneyimi özellikleri içerir
+ * Go board panel for displaying the game board and handling user interactions.
  */
 public class GoBoardPanel extends JPanel {
+    private static final int MIN_CELL_SIZE = 20; // Minimum cell size in pixels
+    private static final int DEFAULT_BOARD_SIZE = 19; // Default Go board size
+    private static final int BOARD_MARGIN = 30; // Margin around the board for coordinates
     
-    // Logger
-    private static final Logger LOGGER = Logger.getLogger(GoBoardPanel.class.getName());
+    private final Color BOARD_COLOR = new Color(219, 176, 102); // Traditional Go board color
+    private final Color LINE_COLOR = Color.BLACK;
+    private final Color BLACK_STONE_COLOR = Color.BLACK;
+    private final Color WHITE_STONE_COLOR = Color.WHITE;
+    private final Color LAST_MOVE_COLOR = new Color(255, 0, 0, 128); // Semi-transparent red
     
-    // Sabitler
-    private static final Color BOARD_COLOR = new Color(220, 179, 92); // Bambu rengi
-    private static final Color GRID_COLOR = Color.BLACK;
-    private static final Color LAST_MOVE_INDICATOR = new Color(255, 0, 0, 150);
-    private static final int MARGIN = 30; // Kenar boşluğu
-    private static final int MIN_CELL_SIZE = 30; // Minimum hücre boyutu
+    private int boardSize = DEFAULT_BOARD_SIZE;
+    private int cellSize = MIN_CELL_SIZE;
+    private int boardX = BOARD_MARGIN;
+    private int boardY = BOARD_MARGIN;
+    private int boardWidth;
+    private int boardHeight;
     
-    // Tahta durumu
-    private char[][] board;
-    private int boardSize = 19; // Varsayılan tahta boyutu
+    private char[][] board = new char[DEFAULT_BOARD_SIZE][DEFAULT_BOARD_SIZE];
     private Point lastMove = null;
-    private String role = ""; // Oyuncunun rolü (BLACK veya WHITE)
-    
-    // UI değişkenleri
-    private int cellSize; // Her hücrenin boyutu
-    private int stoneSize; // Taş boyutu (cellSize'ın yüzdesi)
-    private Point hoverPoint = null; // Fare ile üzerinde durulan konum
-    
-    // Olay işleyicileri için callback
-    private MoveListener moveListener;
+    private Point hoverPoint = null;
+    private Color hoverColor = new Color(0, 0, 0, 64); // Semi-transparent black
     
     /**
-     * Hamle olayı dinleyici arayüzü
-     */
-    public interface MoveListener {
-        void onMove(Point p);
-    }
-
-    /**
-     * Panel oluşturur ve fare olaylarını dinler
+     * Creates a new Go board panel.
      */
     public GoBoardPanel() {
-        board = new char[boardSize][boardSize];
-        clearBoard();
-        
-        setPreferredSize(new Dimension(600, 600));
-        setBackground(BOARD_COLOR);
-        
-        // Fare olayları
-        MouseAdapter mouseHandler = new MouseAdapter() {
-            @Override
-            public void mouseMoved(MouseEvent e) {
-                updateHoverPoint(e.getX(), e.getY());
+        setBackground(new Color(240, 230, 200));
+        for (int i = 0; i < boardSize; i++) {
+            for (int j = 0; j < boardSize; j++) {
+                board[i][j] = '.';
             }
+        }
+        // Force initial sizing
+        calculateBoardDimensions();
+    }
+    
+    /**
+     * Calculate board dimensions based on current component size.
+     */
+    private void calculateBoardDimensions() {
+        // Calculate board dimensions based on current component size
+        Dimension size = getSize();
+        if (size.width == 0 || size.height == 0) {
+            // Use default sizes if component hasn't been sized yet
+            size = new Dimension(600, 600);
+        }
+        
+        // Calculate cell size to fit within the component
+        int availableWidth = size.width - 2 * BOARD_MARGIN;
+        int availableHeight = size.height - 2 * BOARD_MARGIN;
+        int maxCellSize = Math.min(availableWidth, availableHeight) / boardSize;
+        cellSize = Math.max(MIN_CELL_SIZE, maxCellSize);
+        
+        // Calculate board dimensions
+        boardWidth = boardSize * cellSize;
+        boardHeight = boardSize * cellSize;
+        
+        // Center the board within the component
+        boardX = (size.width - boardWidth) / 2;
+        boardY = (size.height - boardHeight) / 2;
+    }
+    
+    @Override
+    public void setBounds(int x, int y, int width, int height) {
+        super.setBounds(x, y, width, height);
+        calculateBoardDimensions();
+    }
+    
+    @Override
+    public void setSize(int width, int height) {
+        super.setSize(width, height);
+        calculateBoardDimensions();
+    }
+    
+    @Override
+    public void setSize(Dimension d) {
+        super.setSize(d);
+        calculateBoardDimensions();
+    }
+    
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2d = (Graphics2D) g;
+        
+        // Enable anti-aliasing for smoother drawing
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        
+        // Draw board
+        drawBoard(g2d);
+        
+        // Draw coordinates
+        drawCoordinates(g2d);
+        
+        // Draw stones
+        drawStones(g2d);
+        
+        // Draw hover highlight
+        drawHoverHighlight(g2d);
+        
+        // Highlight last move
+        highlightLastMove(g2d);
+    }
+    
+    /**
+     * Draw the board grid and background.
+     */
+    private void drawBoard(Graphics2D g2d) {
+        // Draw board background
+        g2d.setColor(BOARD_COLOR);
+        g2d.fillRect(boardX, boardY, boardWidth, boardHeight);
+        
+        // Draw grid lines
+        g2d.setColor(LINE_COLOR);
+        for (int i = 0; i < boardSize; i++) {
+            // Draw horizontal lines
+            g2d.drawLine(boardX, boardY + i * cellSize, 
+                         boardX + boardWidth, boardY + i * cellSize);
             
-            @Override
-            public void mouseExited(MouseEvent e) {
-                hoverPoint = null;
-                repaint();
+            // Draw vertical lines
+            g2d.drawLine(boardX + i * cellSize, boardY, 
+                         boardX + i * cellSize, boardY + boardHeight);
+        }
+        
+        // Draw star points (hoshi)
+        drawStarPoints(g2d);
+    }
+    
+    /**
+     * Draw the star points (hoshi) on the board.
+     */
+    private void drawStarPoints(Graphics2D g2d) {
+        g2d.setColor(LINE_COLOR);
+        
+        // Define star points based on board size
+        int[] starPoints;
+        if (boardSize == 19) {
+            starPoints = new int[]{3, 9, 15};
+        } else if (boardSize == 13) {
+            starPoints = new int[]{3, 6, 9};
+        } else if (boardSize == 9) {
+            starPoints = new int[]{2, 4, 6};
+        } else {
+            return; // No star points for other board sizes
+        }
+        
+        // Draw star points
+        int dotSize = Math.max(4, cellSize / 6);
+        for (int x : starPoints) {
+            for (int y : starPoints) {
+                g2d.fillOval(boardX + x * cellSize - dotSize/2, 
+                             boardY + y * cellSize - dotSize/2, 
+                             dotSize, dotSize);
             }
+        }
+    }
+    
+    /**
+     * Draw the coordinate labels around the board.
+     */
+    private void drawCoordinates(Graphics2D g2d) {
+        g2d.setColor(Color.BLACK);
+        Font coordFont = new Font("SansSerif", Font.BOLD, Math.max(10, cellSize / 3));
+        g2d.setFont(coordFont);
+        
+        // Skip "I" as per traditional Go notation
+        char[] letters = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'};
+        
+        // Draw letter coordinates for columns
+        for (int i = 0; i < Math.min(boardSize, letters.length); i++) {
+            String colLabel = String.valueOf(letters[i]);
             
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (hoverPoint != null && isValidMove(hoverPoint)) {
-                    if (moveListener != null) {
-                        moveListener.onMove(hoverPoint);
+            // Draw column letter at top
+            FontMetrics fm = g2d.getFontMetrics();
+            int labelWidth = fm.stringWidth(colLabel);
+            g2d.drawString(colLabel, 
+                       boardX + i * cellSize + (cellSize - labelWidth) / 2, 
+                       boardY - 5);
+            
+            // Draw column letter at bottom
+            g2d.drawString(colLabel,
+                       boardX + i * cellSize + (cellSize - labelWidth) / 2,
+                       boardY + boardHeight + fm.getAscent() + 2);
+        }
+        
+        // Draw number coordinates for rows (from top to bottom: 19, 18, ..., 1)
+        for (int i = 0; i < boardSize; i++) {
+            String rowLabel = String.valueOf(boardSize - i);
+            FontMetrics fm = g2d.getFontMetrics();
+            int labelWidth = fm.stringWidth(rowLabel);
+            int labelHeight = fm.getAscent();
+            
+            // Draw row number at left
+            g2d.drawString(rowLabel,
+                       boardX - labelWidth - 5,
+                       boardY + i * cellSize + (cellSize + labelHeight) / 2 - 2);
+            
+            // Draw row number at right
+            g2d.drawString(rowLabel,
+                       boardX + boardWidth + 5,
+                       boardY + i * cellSize + (cellSize + labelHeight) / 2 - 2);
+        }
+    }
+    
+    /**
+     * Draw all stones on the board.
+     */
+    private void drawStones(Graphics2D g2d) {
+        for (int y = 0; y < boardSize; y++) {
+            for (int x = 0; x < boardSize; x++) {
+                char stone = board[y][x];
+                if (stone == '.') {
+                    continue; // Empty intersection
+                }
+                
+                int stoneSize = (int)(cellSize * 0.9); // Slightly smaller than cell
+                int x1 = boardX + x * cellSize - stoneSize / 2;
+                int y1 = boardY + y * cellSize - stoneSize / 2;
+                
+                if (stone == 'B' || stone == 'b') {
+                    // Draw black stone
+                    g2d.setColor(BLACK_STONE_COLOR);
+                    g2d.fillOval(x1, y1, stoneSize, stoneSize);
+                    
+                    // If it's a dead stone (lowercase), add an 'X' mark
+                    if (stone == 'b') {
+                        g2d.setColor(Color.WHITE);
+                        g2d.setStroke(new BasicStroke(2));
+                        int margin = stoneSize / 4;
+                        g2d.drawLine(x1 + margin, y1 + margin, x1 + stoneSize - margin, y1 + stoneSize - margin);
+                        g2d.drawLine(x1 + stoneSize - margin, y1 + margin, x1 + margin, y1 + stoneSize - margin);
+                    }
+                } else if (stone == 'W' || stone == 'w') {
+                    // Draw white stone with black outline
+                    g2d.setColor(WHITE_STONE_COLOR);
+                    g2d.fillOval(x1, y1, stoneSize, stoneSize);
+                    g2d.setColor(Color.BLACK);
+                    g2d.drawOval(x1, y1, stoneSize, stoneSize);
+                    
+                    // If it's a dead stone (lowercase), add an 'X' mark
+                    if (stone == 'w') {
+                        g2d.setColor(Color.BLACK);
+                        g2d.setStroke(new BasicStroke(2));
+                        int margin = stoneSize / 4;
+                        g2d.drawLine(x1 + margin, y1 + margin, x1 + stoneSize - margin, y1 + stoneSize - margin);
+                        g2d.drawLine(x1 + stoneSize - margin, y1 + margin, x1 + margin, y1 + stoneSize - margin);
                     }
                 }
             }
-        };
-        
-        addMouseListener(mouseHandler);
-        addMouseMotionListener(mouseHandler);
+        }
     }
     
     /**
-     * Tahtayı temizler (tüm hücreleri boşaltır)
+     * Draw a highlight around the last move.
      */
-    public void clearBoard() {
-        for (int y = 0; y < boardSize; y++) {
-            for (int x = 0; x < boardSize; x++) {
-                board[y][x] = '.';
+    private void highlightLastMove(Graphics2D g2d) {
+        if (lastMove != null) {
+            int x = lastMove.x();
+            int y = lastMove.y();
+            
+            // Draw a red circle around the last move
+            int highlightSize = (int)(cellSize * 0.7);
+            int x1 = boardX + x * cellSize - highlightSize / 2;
+            int y1 = boardY + y * cellSize - highlightSize / 2;
+            
+            g2d.setColor(LAST_MOVE_COLOR);
+            g2d.setStroke(new BasicStroke(3));
+            g2d.drawOval(x1, y1, highlightSize, highlightSize);
+        }
+    }
+    
+    /**
+     * Draw a semi-transparent stone at hover position.
+     */
+    private void drawHoverHighlight(Graphics2D g2d) {
+        if (hoverPoint != null) {
+            int x = hoverPoint.x();
+            int y = hoverPoint.y();
+            
+            if (y < boardSize && x < boardSize && board[y][x] == '.') { // Only show if intersection is empty
+                int stoneSize = (int)(cellSize * 0.9);
+                int x1 = boardX + x * cellSize - stoneSize / 2;
+                int y1 = boardY + y * cellSize - stoneSize / 2;
+                
+                // Draw semi-transparent stone
+                g2d.setColor(hoverColor);
+                g2d.fillOval(x1, y1, stoneSize, stoneSize);
+                
+                // If hover stone is white, add a thin border
+                if (hoverColor.getRed() > 200) { // Rough check if it's white-ish
+                    g2d.setColor(new Color(0, 0, 0, 128));
+                    g2d.drawOval(x1, y1, stoneSize, stoneSize);
+                }
             }
         }
-        repaint();
     }
     
     /**
-     * Tahta durumunu günceller
-     * 
-     * @param newBoard Yeni tahta durumu
+     * Convert screen coordinates to board coordinates.
      */
-    public void setBoard(char[][] newBoard) {
-        if (newBoard == null) {
-            LOGGER.warning("Null board passed to setBoard");
+    public Point getBoardCoordinates(int screenX, int screenY) {
+        int x = (screenX - boardX + cellSize/2) / cellSize;
+        int y = (screenY - boardY + cellSize/2) / cellSize;
+        
+        if (x >= 0 && x < boardSize && y >= 0 && y < boardSize) {
+            return new Point(x, y);
+        }
+        return null; // Outside the board
+    }
+    
+    /**
+     * Set the board data.
+     */
+    public void setBoard(char[][] boardData) {
+        if (boardData == null || boardData.length == 0) {
             return;
         }
         
-        this.boardSize = newBoard.length;
-        this.board = new char[boardSize][boardSize];
+        // Update board size if necessary
+        if (boardData.length != boardSize) {
+            boardSize = boardData.length;
+            board = new char[boardSize][boardSize];
+            calculateBoardDimensions();
+        }
         
+        // Copy the board data
         for (int y = 0; y < boardSize; y++) {
-            if (y < newBoard.length && newBoard[y] != null) {
-                System.arraycopy(newBoard[y], 0, board[y], 0, Math.min(boardSize, newBoard[y].length));
-                
-                // Fill remaining cells if source row is shorter
-                for (int x = newBoard[y].length; x < boardSize; x++) {
-                    board[y][x] = '.';
-                }
-            } else {
-                // Fill empty rows
-                for (int x = 0; x < boardSize; x++) {
+            for (int x = 0; x < boardSize; x++) {
+                if (x < boardData[y].length) {
+                    board[y][x] = boardData[y][x];
+                } else {
                     board[y][x] = '.';
                 }
             }
         }
+        
         repaint();
     }
     
     /**
-     * Son hamleyi ayarlar (kırmızı işaretçi için)
-     * 
-     * @param p Son hamle noktası
+     * Set the last move.
      */
     public void setLastMove(Point p) {
         this.lastMove = p;
@@ -146,322 +356,51 @@ public class GoBoardPanel extends JPanel {
     }
     
     /**
-     * Oyuncunun rolünü ayarlar (BLACK veya WHITE)
-     * 
-     * @param role Oyuncu rolü
+     * Add hover effect for the given player color.
      */
-    public void setRole(String role) {
-        this.role = role;
+    public void addHoverEffect(char playerColor) {
+        // Set hover color based on player color
+        hoverColor = playerColor == 'B' ? 
+                     new Color(0, 0, 0, 64) : new Color(255, 255, 255, 128);
+        
+        addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(java.awt.event.MouseEvent e) {
+                Point p = getBoardCoordinates(e.getX(), e.getY());
+                if (p != null) {
+                    hoverPoint = p;
+                    repaint();
+                } else if (hoverPoint != null) {
+                    hoverPoint = null;
+                    repaint();
+                }
+            }
+        });
+        
+        // Clear hover when mouse exits the component
+        addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                hoverPoint = null;
+                repaint();
+            }
+        });
     }
     
-    /**
-     * Hamle dinleyici ayarlar
-     * 
-     * @param listener Hamle dinleyici
-     */
-    public void setMoveListener(MoveListener listener) {
-        this.moveListener = listener;
-    }
-    
-    /**
-     * Tahta boyutunu döndürür
-     * 
-     * @return Tahta boyutu
-     */
+    // Getters
     public int getBoardSize() {
         return boardSize;
     }
     
-    /**
-     * Hücre boyutunu döndürür
-     * 
-     * @return Hücre boyutu
-     */
     public int getCellSize() {
         return cellSize;
     }
     
-    /**
-     * Fare konumundan tahta koordinatlarını hesaplar
-     * 
-     * @param mouseX Fare X koordinatı
-     * @param mouseY Fare Y koordinatı
-     */
-    private void updateHoverPoint(int mouseX, int mouseY) {
-        int gridX = (mouseX - MARGIN + cellSize/2) / cellSize;
-        int gridY = (mouseY - MARGIN + cellSize/2) / cellSize;
-        
-        Point newHover = null;
-        if (gridX >= 0 && gridX < boardSize && gridY >= 0 && gridY < boardSize) {
-            newHover = new Point(gridX, gridY);
-        }
-        
-        if ((hoverPoint == null && newHover != null) || 
-            (hoverPoint != null && !hoverPoint.equals(newHover))) {
-            hoverPoint = newHover;
-            repaint();
-        }
+    public int getBoardX() {
+        return boardX;
     }
     
-    /**
-     * Bir noktada hamle yapılabilir mi kontrol eder
-     * 
-     * @param p Kontrol edilecek nokta
-     * @return Hamle yapılabilirse true
-     */
-    private boolean isValidMove(Point p) {
-        if (p == null || p.x() < 0 || p.x() >= boardSize || p.y() < 0 || p.y() >= boardSize) {
-            return false;
-        }
-        return board[p.y()][p.x()] == '.';
-    }
-    
-    /**
-     * Bir noktanın star point olup olmadığını kontrol eder
-     * 
-     * @param x X koordinatı
-     * @param y Y koordinatı
-     * @return Star point ise true
-     */
-    private boolean isStarPoint(int x, int y) {
-        if (boardSize == 19) {
-            // 19x19 tahta için star points
-            int[] stars = {3, 9, 15};
-            for (int i : stars) {
-                for (int j : stars) {
-                    if (x == i && y == j) return true;
-                }
-            }
-        } else if (boardSize == 13) {
-            // 13x13 tahta için star points
-            int[] stars = {3, 6, 9};
-            for (int i : stars) {
-                for (int j : stars) {
-                    if (x == i && y == j) return true;
-                }
-            }
-        } else if (boardSize == 9) {
-            // 9x9 tahta için star points
-            int[] stars = {2, 4, 6};
-            for (int i : stars) {
-                for (int j : stars) {
-                    if (x == i && y == j) return true;
-                }
-            }
-            return (x == 4 && y == 4); // Ortadaki star point
-        }
-        return false;
-    }
-    
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        
-        int width = getWidth();
-        int height = getHeight();
-        int boardDim = Math.min(width, height) - 2 * MARGIN;
-        cellSize = Math.max(boardDim / (boardSize - 1), MIN_CELL_SIZE);
-        stoneSize = (int)(cellSize * 0.9);
-        
-        // Tahta arka planı
-        g2.setColor(BOARD_COLOR);
-        g2.fillRect(0, 0, width, height);
-        
-        // Grid çizgileri
-        g2.setColor(GRID_COLOR);
-        g2.setStroke(new BasicStroke(1.0f));
-        
-        for (int i = 0; i < boardSize; i++) {
-            // Yatay çizgiler
-            g2.drawLine(
-                MARGIN, 
-                MARGIN + i * cellSize, 
-                MARGIN + (boardSize - 1) * cellSize, 
-                MARGIN + i * cellSize
-            );
-            
-            // Dikey çizgiler
-            g2.drawLine(
-                MARGIN + i * cellSize, 
-                MARGIN, 
-                MARGIN + i * cellSize, 
-                MARGIN + (boardSize - 1) * cellSize
-            );
-        }
-        
-        // Star noktaları (hoshi)
-        g2.setColor(Color.BLACK);
-        int starSize = 6;
-        for (int x = 0; x < boardSize; x++) {
-            for (int y = 0; y < boardSize; y++) {
-                if (isStarPoint(x, y)) {
-                    g2.fillOval(
-                        MARGIN + x * cellSize - starSize/2, 
-                        MARGIN + y * cellSize - starSize/2, 
-                        starSize, 
-                        starSize
-                    );
-                }
-            }
-        }
-        
-        // Koordinat etiketleri
-        drawCoordinates(g2);
-        
-        // Taşları çiz
-        drawStones(g2);
-        
-        // Son hamle göstergesi
-        if (lastMove != null) {
-            g2.setColor(LAST_MOVE_INDICATOR);
-            g2.drawOval(
-                MARGIN + lastMove.x() * cellSize - stoneSize/4, 
-                MARGIN + lastMove.y() * cellSize - stoneSize/4, 
-                stoneSize/2, 
-                stoneSize/2
-            );
-        }
-        
-        // Hover efekti
-        if (hoverPoint != null && isValidMove(hoverPoint)) {
-            Stone hoverStone = role.equals("BLACK") ? Stone.BLACK : Stone.WHITE;
-            float alpha = 0.5f;
-            drawStone(g2, hoverPoint.x(), hoverPoint.y(), hoverStone, alpha);
-        }
-        
-        g2.dispose();
-    }
-    
-    /**
-     * Koordinat etiketlerini çizer (A-T, 1-19)
-     * 
-     * @param g2 Graphics2D nesnesi
-     */
-    private void drawCoordinates(Graphics2D g2) {
-        g2.setColor(Color.BLACK);
-        g2.setFont(new Font("SansSerif", Font.BOLD, 12));
-        FontMetrics fm = g2.getFontMetrics();
-        
-        // Yatay koordinatlar (A-T, I hariç)
-        for (int i = 0; i < boardSize; i++) {
-            char label = (char)('A' + (i >= 8 ? i + 1 : i)); // I harfini atla
-            String s = Character.toString(label);
-            int textWidth = fm.stringWidth(s);
-            
-            // Üst etiketler
-            g2.drawString(s, MARGIN + i * cellSize - textWidth/2, MARGIN - 10);
-            
-            // Alt etiketler
-            g2.drawString(s, MARGIN + i * cellSize - textWidth/2, 
-                          MARGIN + (boardSize - 1) * cellSize + 20);
-        }
-        
-        // Dikey koordinatlar (1-19)
-        for (int i = 0; i < boardSize; i++) {
-            String s = Integer.toString(boardSize - i);
-            int textWidth = fm.stringWidth(s);
-            
-            // Sol etiketler
-            g2.drawString(s, MARGIN - 15 - textWidth, MARGIN + i * cellSize + 5);
-            
-            // Sağ etiketler
-            g2.drawString(s, MARGIN + (boardSize - 1) * cellSize + 15, 
-                          MARGIN + i * cellSize + 5);
-        }
-    }
-    
-    /**
-     * Tüm taşları çizer
-     * 
-     * @param g2 Graphics2D nesnesi
-     */
-    private void drawStones(Graphics2D g2) {
-        if (board == null) return;
-        
-        for (int y = 0; y < boardSize; y++) {
-            if (y >= board.length) continue;
-            
-            for (int x = 0; x < boardSize; x++) {
-                if (x >= board[y].length) continue;
-                
-                Stone stone = null;
-                if (board[y][x] == 'B') {
-                    stone = Stone.BLACK;
-                } else if (board[y][x] == 'W') {
-                    stone = Stone.WHITE;
-                }
-                
-                if (stone != null) {
-                    drawStone(g2, x, y, stone, 1.0f);
-                }
-            }
-        }
-    }
-    
-    /**
-     * Tek bir taşı çizer
-     * 
-     * @param g2 Graphics2D nesnesi
-     * @param x X koordinatı
-     * @param y Y koordinatı
-     * @param stone Taş rengi
-     * @param alpha Opaklık (0.0-1.0)
-     */
-    private void drawStone(Graphics2D g2, int x, int y, Stone stone, float alpha) {
-        int centerX = MARGIN + x * cellSize;
-        int centerY = MARGIN + y * cellSize;
-        
-        if (stone == Stone.BLACK) {
-            // Siyah taş (gradient efekt ile)
-            Color darkBlack = new Color(0, 0, 0, (int)(255 * alpha));
-            Color lightBlack = new Color(80, 80, 80, (int)(255 * alpha));
-            
-            GradientPaint gp = new GradientPaint(
-                centerX - stoneSize/4, centerY - stoneSize/4, 
-                lightBlack, 
-                centerX + stoneSize/4, centerY + stoneSize/4, 
-                darkBlack
-            );
-            
-            g2.setPaint(gp);
-            g2.fill(new Ellipse2D.Double(
-                centerX - stoneSize/2, 
-                centerY - stoneSize/2, 
-                stoneSize, 
-                stoneSize
-            ));
-            
-        } else if (stone == Stone.WHITE) {
-            // Beyaz taş (gradient efekt ile)
-            Color lightWhite = new Color(255, 255, 255, (int)(255 * alpha));
-            Color shellWhite = new Color(220, 220, 210, (int)(255 * alpha));
-            
-            GradientPaint gp = new GradientPaint(
-                centerX - stoneSize/3, centerY - stoneSize/3, 
-                lightWhite, 
-                centerX + stoneSize/3, centerY + stoneSize/3, 
-                shellWhite
-            );
-            
-            g2.setPaint(gp);
-            g2.fill(new Ellipse2D.Double(
-                centerX - stoneSize/2, 
-                centerY - stoneSize/2, 
-                stoneSize, 
-                stoneSize
-            ));
-            
-            // Beyaz taşın kenar çizgisi
-            g2.setColor(new Color(160, 160, 160, (int)(180 * alpha)));
-            g2.setStroke(new BasicStroke(1.0f));
-            g2.draw(new Ellipse2D.Double(
-                centerX - stoneSize/2, 
-                centerY - stoneSize/2, 
-                stoneSize, 
-                stoneSize
-            ));
-        }
+    public int getBoardY() {
+        return boardY;
     }
 }

@@ -1,14 +1,16 @@
 package game.go.model;
 
+import game.go.util.GameRecorder;
 import java.util.*;
 
 /**
  * Enhanced Go game state manager
  * Features improved Ko rule detection, territory scoring, and game mechanics
+ * Now with consistent move recording
  */
 public class GameState {
 
-    private final Board board;
+    private Board board;
     private Stone currentPlayer = Stone.BLACK;
     private int consecutivePasses = 0;
     private final Deque<Long> positionHistory = new ArrayDeque<>();
@@ -16,43 +18,10 @@ public class GameState {
     private Point lastMove = null;
     private String gameOverReason = "";
     private final Set<Point> markedDeadStones = new HashSet<>();
-
-    /**
-     * Zobrist sınıfı (hash değeri hesaplama için)
-     * Gerçek uygulamada bu ayrı bir dosyada olacaktır
-     */
-    private static class Zobrist {
-        private static final Random RANDOM = new Random(42); // Sabit seed
-        private static final long[][][] TABLE = new long[19][19][3]; // En büyük tahta boyutu için
-        
-        static {
-            // Hash tablosunu başlat
-            for (int x = 0; x < 19; x++) {
-                for (int y = 0; y < 19; y++) {
-                    for (int s = 0; s < 3; s++) { // BOŞ, SİYAH, BEYAZ
-                        TABLE[x][y][s] = RANDOM.nextLong();
-                    }
-                }
-            }
-        }
-        
-        public static long fullHash(Board board) {
-            long hash = 0;
-            int size = board.getSize();
-            
-            for (int x = 0; x < size; x++) {
-                for (int y = 0; y < size; y++) {
-                    Point p = new Point(x, y);
-                    Stone stone = board.get(p);
-                    int stoneIndex = (stone == Stone.EMPTY) ? 0 : 
-                                     (stone == Stone.BLACK) ? 1 : 2;
-                    hash ^= TABLE[x][y][stoneIndex];
-                }
-            }
-            
-            return hash;
-        }
-    }
+    private double komi = 6.5; // Default komi value (can be changed)
+    
+    // Add a game recorder reference
+    private GameRecorder recorder = null;
 
     /**
      * Creates a new game state with specified board size
@@ -63,6 +32,17 @@ public class GameState {
         this.board = new Board(size);
         // Record hash of initial position
         positionHistory.push(Zobrist.fullHash(board));
+    }
+    
+    /**
+     * Sets a game recorder to record all moves
+     * 
+     * @param recorder The game recorder to use
+     */
+    public void setRecorder(GameRecorder recorder) {
+        this.recorder = recorder;
+        System.out.println("GameState: Recorder attached. Recording is " + 
+                          (recorder != null && recorder.isRecording() ? "enabled" : "disabled"));
     }
 
     /**
@@ -96,6 +76,15 @@ public class GameState {
         positionHistory.push(newPositionHash);
         lastMove = p;
         consecutivePasses = 0;
+        
+        // IMPORTANT: Record this move before changing the current player
+        if (recorder != null) {
+            recorder.recordMove(p, currentPlayer);
+            System.out.println("GameState: Recorded move at " + p + " by " + currentPlayer);
+        } else {
+            System.out.println("GameState: Move at " + p + " NOT recorded (no recorder)");
+        }
+        
         currentPlayer = currentPlayer.opponent();
         return new Board.MoveResult(true, "");
     }
@@ -116,6 +105,15 @@ public class GameState {
         }
         positionHistory.push(Zobrist.fullHash(board));
         lastMove = null;
+        
+        // IMPORTANT: Record this pass before changing the current player
+        if (recorder != null) {
+            recorder.recordPass(currentPlayer);
+            System.out.println("GameState: Recorded pass by " + currentPlayer);
+        } else {
+            System.out.println("GameState: Pass by " + currentPlayer + " NOT recorded (no recorder)");
+        }
+        
         currentPlayer = currentPlayer.opponent();
         return new Board.MoveResult(true, "");
     }
@@ -132,6 +130,15 @@ public class GameState {
 
         gameOver = true;
         gameOverReason = currentPlayer + " resigned";
+        
+        // IMPORTANT: Record this resignation before changing anything
+        if (recorder != null) {
+            recorder.recordResign(currentPlayer);
+            System.out.println("GameState: Recorded resignation by " + currentPlayer);
+        } else {
+            System.out.println("GameState: Resignation by " + currentPlayer + " NOT recorded (no recorder)");
+        }
+        
         return new Board.MoveResult(true, gameOverReason);
     }
 
@@ -162,6 +169,33 @@ public class GameState {
         }
         
         return true;
+    }
+
+    /**
+     * Resets the game state to the beginning
+     */
+    public void reset() {
+        // Create a new board of the same size
+        board = new Board(board.getSize());
+        
+        // Reset game state variables
+        currentPlayer = Stone.BLACK;
+        consecutivePasses = 0;
+        positionHistory.clear();
+        positionHistory.push(Zobrist.fullHash(board));
+        gameOver = false;
+        lastMove = null;
+        gameOverReason = "";
+        markedDeadStones.clear();
+        
+        // Don't reset the recorder - it should be preserved
+    }
+
+    /**
+     * Clear all marked dead stones
+     */
+    public void resetDeadStones() {
+        markedDeadStones.clear();
     }
 
     /**
@@ -236,6 +270,24 @@ public class GameState {
     }
     
     /**
+     * Set the komi value
+     * 
+     * @param komi The komi value to set
+     */
+    public void setKomi(double komi) {
+        this.komi = komi;
+    }
+    
+    /**
+     * Get the komi value
+     * 
+     * @return The current komi value
+     */
+    public double getKomi() {
+        return komi;
+    }
+    
+    /**
      * Calculates areas and determines territories
      * Advanced territorial scoring method
      * 
@@ -283,6 +335,9 @@ public class GameState {
         // Add captured stones count
         blackTerritory += board.getCapturedBy(Stone.BLACK);
         whiteTerritory += board.getCapturedBy(Stone.WHITE);
+        
+        // Add komi to white's score
+        whiteTerritory += (int)komi;
         
         scores.put(Stone.BLACK, blackTerritory);
         scores.put(Stone.WHITE, whiteTerritory);

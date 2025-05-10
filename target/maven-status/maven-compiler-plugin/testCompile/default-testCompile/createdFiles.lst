@@ -1,0 +1,5 @@
+game\go\model\BoardTest.class
+game\go\model\RulesRegressionTest.class
+game\go\model\GameStateRulesTest.class
+game\go\model\GameRulesTester.class
+game\go\model\GameStateTest.class

@@ -2,6 +2,8 @@ package game.go.model;
 
 import game.go.util.GameRecorder;
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Enhanced Go game state manager
@@ -19,9 +21,11 @@ public class GameState {
     private String gameOverReason = "";
     private final Set<Point> markedDeadStones = new HashSet<>();
     private double komi = 6.5; // Default komi value (can be changed)
+    private static final Logger LOGGER = Logger.getLogger(GameState.class.getName());
     
     // Add a game recorder reference
-    private GameRecorder recorder = null;
+        private GameRecorder recorder = null;
+    private final Object recorderLock = new Object();
 
     /**
      * Creates a new game state with specified board size
@@ -40,14 +44,15 @@ public class GameState {
      * @param recorder The game recorder to use
      */
     public void setRecorder(GameRecorder recorder) {
-        this.recorder = recorder;
-        System.out.println("GameState: Recorder attached. Recording is " + 
-                          (recorder != null && recorder.isRecording() ? "enabled" : "disabled"));
+        synchronized(recorderLock) {
+            this.recorder = recorder;
+            LOGGER.log(Level.INFO, "GameState: Recorder attached. Recording is {0}", 
+                      (recorder != null && recorder.isRecording() ? "enabled" : "disabled"));
+        }
     }
 
-    /**
-     * Places a stone on the board: first tries on a clone, then checks for Ko,
-     * finally applies to the real board.
+     /**
+     * Places a stone on the board
      * 
      * @param p Point to play
      * @return Result of the move
@@ -57,40 +62,52 @@ public class GameState {
             return new Board.MoveResult(false, "Game is over. Reason: " + gameOverReason);
         }
 
-        // 1) Try move on clone
+        // Try move on clone first
         Board tmpBoard = board.copy();
         Board.MoveResult trial = tmpBoard.placeStone(p, currentPlayer);
         if (!trial.valid) {
-            return trial;  // "Cell occupied" or "Suicide move"
+            return trial;
         }
+        
         long newPositionHash = Zobrist.fullHash(tmpBoard);
 
-        // 2) Ko check: new position cannot equal any previous position
-        // Stricter super-ko rule (no position repetition)
+        // Ko rule check
         if (positionHistory.contains(newPositionHash)) {
             return new Board.MoveResult(false, "Ko violation: this position has occurred before");
         }
 
-        // 3) Valid move: update real board, push to history, change turn
+        // Valid move: update real board, push to history
         board.setState(tmpBoard);
         positionHistory.push(newPositionHash);
         lastMove = p;
         consecutivePasses = 0;
         
-        // IMPORTANT: Record this move before changing the current player
-        if (recorder != null) {
-            recorder.recordMove(p, currentPlayer);
-            System.out.println("GameState: Recorded move at " + p + " by " + currentPlayer);
-        } else {
-            System.out.println("GameState: Move at " + p + " NOT recorded (no recorder)");
+        // IMPORTANT: Record this move BEFORE changing current player
+        synchronized(recorderLock) {
+            if (recorder != null) {
+                try {
+                    recorder.recordMove(p, currentPlayer);
+                    LOGGER.log(Level.INFO, "GameState: Recorded move at {0} by {1}", 
+                              new Object[]{p, currentPlayer});
+                } catch (Exception e) {
+                    LOGGER.log(Level.SEVERE, "GameState: Error recording move: {0}", e.getMessage());
+                }
+            }
         }
         
+        // Change player
+        Stone previousPlayer = currentPlayer;
         currentPlayer = currentPlayer.opponent();
+        
+        // Log the move
+        LOGGER.log(Level.INFO, "GameState: {0} played at {1}. Next player: {2}", 
+                  new Object[]{previousPlayer, p, currentPlayer});
+        
         return new Board.MoveResult(true, "");
     }
 
     /**
-     * Passes the current turn. Two consecutive passes end the game.
+     * Passes the current turn
      * 
      * @return Result of the move
      */
@@ -99,27 +116,40 @@ public class GameState {
             return new Board.MoveResult(false, "Game is over. Reason: " + gameOverReason);
         }
 
+        // Update pass count
         if (++consecutivePasses >= 2) {
             gameOver = true;
             gameOverReason = "Both players passed";
         }
+        
         positionHistory.push(Zobrist.fullHash(board));
         lastMove = null;
         
-        // IMPORTANT: Record this pass before changing the current player
-        if (recorder != null) {
-            recorder.recordPass(currentPlayer);
-            System.out.println("GameState: Recorded pass by " + currentPlayer);
-        } else {
-            System.out.println("GameState: Pass by " + currentPlayer + " NOT recorded (no recorder)");
+        // IMPORTANT: Record this pass BEFORE changing current player
+        synchronized(recorderLock) {
+            if (recorder != null) {
+                try {
+                    recorder.recordPass(currentPlayer);
+                    LOGGER.log(Level.INFO, "GameState: Recorded pass by {0}", currentPlayer);
+                } catch (Exception e) {
+                    LOGGER.log(Level.SEVERE, "GameState: Error recording pass: {0}", e.getMessage());
+                }
+            }
         }
         
+        // Change player
+        Stone previousPlayer = currentPlayer;
         currentPlayer = currentPlayer.opponent();
+        
+        // Log the pass
+        LOGGER.log(Level.INFO, "GameState: {0} passed. Next player: {1}", 
+                  new Object[]{previousPlayer, currentPlayer});
+        
         return new Board.MoveResult(true, "");
     }
 
     /**
-     * Current player resigns. Game ends immediately.
+     * Current player resigns
      * 
      * @return Result of the move
      */
@@ -131,12 +161,19 @@ public class GameState {
         gameOver = true;
         gameOverReason = currentPlayer + " resigned";
         
-        // IMPORTANT: Record this resignation before changing anything
-        if (recorder != null) {
-            recorder.recordResign(currentPlayer);
-            System.out.println("GameState: Recorded resignation by " + currentPlayer);
-        } else {
-            System.out.println("GameState: Resignation by " + currentPlayer + " NOT recorded (no recorder)");
+        // IMPORTANT: Record this resignation
+        synchronized(recorderLock) {
+            if (recorder != null) {
+                try {
+                    recorder.recordResign(currentPlayer);
+                    LOGGER.log(Level.INFO, "GameState: Recorded resignation by {0}", currentPlayer);
+                    
+                    // Mark game as finished
+                    recorder.markGameFinished();
+                } catch (Exception e) {
+                    LOGGER.log(Level.SEVERE, "GameState: Error recording resignation: {0}", e.getMessage());
+                }
+            }
         }
         
         return new Board.MoveResult(true, gameOverReason);

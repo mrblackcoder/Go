@@ -6,6 +6,7 @@ import game.go.model.GameState;
 import game.go.model.Point;
 import game.go.model.Stone;
 import game.go.model.Board.MoveResult;
+import game.go.util.GameTimer;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -14,13 +15,44 @@ public class GameSession {
 
     private final SClient black, white;
     private final GameState state;
+    private final Server server; // Server referansı eklendi
     private final static Logger LOGGER = Logger.getLogger(GameSession.class.getName());
     private boolean sessionActive = true; // Oturumun aktif olup olmadığını takip et
+    
+    // Süre sayaçları
+    private final GameTimer blackTimer;
+    private final GameTimer whiteTimer;
+    private static final int DEFAULT_TIME_MINUTES = 30; // Varsayılan süre (dakika)
+    private static final int TIMER_UPDATE_INTERVAL = 1000; // 1 saniye
 
-    public GameSession(SClient black, SClient white) throws IOException {
+    public GameSession(SClient black, SClient white, Server server) throws IOException {
         this.black = black;
         this.white = white;
+        this.server = server;
         this.state = new GameState(19); // Tahta boyutu (örn: 19)
+        
+        // Zamanlayıcıları başlat
+        this.blackTimer = new GameTimer(DEFAULT_TIME_MINUTES, null);
+        this.whiteTimer = new GameTimer(DEFAULT_TIME_MINUTES, null);
+        
+        // Zaman bittiğinde oyunu bitirme aksiyonlarını ayarla
+        this.blackTimer.setTimeoutAction(() -> {
+            try {
+                LOGGER.info("Black's time is up!");
+                timeOut(Stone.BLACK);
+            } catch (IOException e) {
+                LOGGER.log(Level.SEVERE, "Error handling black timeout", e);
+            }
+        });
+        
+        this.whiteTimer.setTimeoutAction(() -> {
+            try {
+                LOGGER.info("White's time is up!");
+                timeOut(Stone.WHITE);
+            } catch (IOException e) {
+                LOGGER.log(Level.SEVERE, "Error handling white timeout", e);
+            }
+        });
 
         black.bindSession(this);
         white.bindSession(this); // Bind before sending initial messages
@@ -31,9 +63,58 @@ public class GameSession {
         // Skor ve tahtayı başlangıçta gönder
         broadcastScore();
         broadcastBoard();
+        
+        // Zamanlayıcı durumunu gönder
+        sendTimerStatus();
+        
+        // İlk oyuncunun süresini başlat (siyah)
+        blackTimer.start();
 
         System.out.println("GameSession started between client " + black.id + " (BLACK) and " + white.id + " (WHITE)");
         LOGGER.log(Level.INFO, "GameSession started between client {0} (BLACK) and {1} (WHITE)", new Object[]{black.id, white.id});
+        
+        // Zamanlayıcı güncellemelerini başlat
+        startTimerUpdates();
+    }
+    
+    // Zamanı güncellemek için periyodik timer
+    private void startTimerUpdates() {
+        new Thread(() -> {
+            while (sessionActive) {
+                try {
+                    sendTimerStatus();
+                    Thread.sleep(TIMER_UPDATE_INTERVAL);
+                } catch (InterruptedException | IOException e) {
+                    LOGGER.log(Level.WARNING, "Timer update interrupted", e);
+                    break;
+                }
+            }
+        }).start();
+    }
+    
+    // Zamanlayıcı durumunu istemcilere gönder
+    private void sendTimerStatus() throws IOException {
+        if (!sessionActive) return;
+        
+        String blackTime = blackTimer.getTimeText();
+        String whiteTime = whiteTimer.getTimeText();
+        
+        // Siyah oyuncuya zaman bilgisini gönder
+        sendToClient(black, new Message(Message.Type.TIMER_UPDATE, blackTime + "," + whiteTime), "timer to black");
+        
+        // Beyaz oyuncuya zaman bilgisini gönder
+        sendToClient(white, new Message(Message.Type.TIMER_UPDATE, whiteTime + "," + blackTime), "timer to white");
+    }
+    
+    // Süre bittiğinde çağrılacak metod
+    private synchronized void timeOut(Stone player) throws IOException {
+        if (!sessionActive || state.isOver()) return;
+        
+        // Oyunu bitir
+        state.resign(); // İlgili oyuncu teslim olmuş sayılır
+        
+        String timeoutPlayer = (player == Stone.BLACK) ? "BLACK" : "WHITE";
+        finish(timeoutPlayer + " süre dolduğu için oyunu kaybetti.");
     }
     
     public synchronized void handleMove(SClient from, String payload) throws IOException {
@@ -60,9 +141,21 @@ public class GameSession {
             if (result.valid) {
                 LOGGER.log(Level.INFO, "Client {0} moved to {1}", new Object[]{from.id, payload});
                 
+                // Hamle geçişinde, mevcut oyuncunun zamanını durdur ve diğer oyuncunun zamanını başlat
+                if (fromColor == Stone.BLACK) {
+                    blackTimer.stop();
+                    whiteTimer.start();
+                } else {
+                    whiteTimer.stop();
+                    blackTimer.start();
+                }
+                
                 // Başarılı hamle sonrası tahta ve skor güncelleme
                 broadcastBoard();
                 broadcastScore();
+                
+                // Süre durumunu güncelle
+                sendTimerStatus();
             } else {
                 // Geçersiz hamle - hata mesajını sadece hamleyi yapan oyuncuya ilet
                 LOGGER.log(Level.INFO, "Client {0} made invalid move to {1}: {2}", 
@@ -101,9 +194,21 @@ public class GameSession {
         if (result.valid) {
             LOGGER.log(Level.INFO, "Client {0} passed.", from.id);
             
+            // Hamle geçişinde, mevcut oyuncunun zamanını durdur ve diğer oyuncunun zamanını başlat
+            if (fromColor == Stone.BLACK) {
+                blackTimer.stop();
+                whiteTimer.start();
+            } else {
+                whiteTimer.stop();
+                blackTimer.start();
+            }
+            
             // Pass hamlesinden sonra tahtayı ve skoru güncelle
             broadcastBoard();
             broadcastScore();
+            
+            // Süre durumunu güncelle
+            sendTimerStatus();
             
             if (state.isOver()) {
                 finish("İki oyuncu da pas geçti.");
@@ -121,6 +226,10 @@ public class GameSession {
         
         Stone resignerColor = (from == black) ? Stone.BLACK : Stone.WHITE;
         LOGGER.log(Level.INFO, "Client {0} ({1}) resigned.", new Object[]{from.id, resignerColor});
+        
+        // Zamanlayıcıları durdur
+        blackTimer.stop();
+        whiteTimer.stop();
         
         state.resign(); // Oyunu bitirir
         finish(resignerColor + " pes etti.");
@@ -142,26 +251,82 @@ public class GameSession {
         LOGGER.log(Level.INFO, "Chat relayed from {0}: {1}", new Object[]{from.id, message});
     }
 
-    public synchronized void handleDisconnect(SClient disconnectedClient) throws IOException {
-        if (!sessionActive) return; // Oturum zaten bitmişse tekrar bitirme
+// GameSession.java - finish ve handleDisconnect metodları
 
-        Stone disconnectedColor = (disconnectedClient == black) ? Stone.BLACK : Stone.WHITE;
-        SClient opponent = (disconnectedClient == black) ? white : black;
-        LOGGER.log(Level.WARNING, "Client {0} ({1}) disconnected during active game.", 
-                  new Object[]{disconnectedClient.id, disconnectedColor});
+private void finish(String reason) throws IOException {
+    if (!sessionActive) return; // Zaten bittiyse tekrar bitirme mesajı gönderme
 
-        // Oyunu bitir ve rakibi bilgilendir
-        if (!state.isOver()) { // Oyun zaten bitmemişse bitir
-            state.resign(); // Rakip pes etmiş gibi sayılabilir
+    // Oturumu pasif yap
+    sessionActive = false; 
+    
+    // Zamanlayıcıları durdur
+    blackTimer.stop();
+    whiteTimer.stop();
+    
+    int sb = state.scoreFor(Stone.BLACK);
+    int sw = state.scoreFor(Stone.WHITE);
+    String result = sb + "," + sw + "," + reason;
+    var m = new Message(Message.Type.GAME_OVER, result);
+    
+    LOGGER.log(Level.INFO, "Game Over. Reason: {0}. Score B/W: {1}/{2}", new Object[]{reason, sb, sw});
+    
+    // Sadece bağlı olan istemcilere mesaj gönder
+    try {
+        if (black.isConnected()) {
+            black.send(m);
         }
-        finish(disconnectedColor + " bağlantısı koptu.");
-
-        // Oturumu pasif hale getir
-        sessionActive = false;
+    } catch (IOException e) {
+        LOGGER.log(Level.WARNING, "Cannot send game over to black", e);
+    }
+    
+    try {
+        if (white.isConnected()) {
+            white.send(m);
+        }
+    } catch (IOException e) {
+        LOGGER.log(Level.WARNING, "Cannot send game over to white", e);
     }
 
-    // --- Yardımcı Metodlar ---
+    // Sunucuya oyunun bittiğini bildir
+    server.gameEnded(black, white);
+}
 
+public synchronized void handleDisconnect(SClient disconnectedClient) throws IOException {
+    if (!sessionActive) return; // Oturum zaten bitmişse tekrar bitirme
+
+    Stone disconnectedColor = (disconnectedClient == black) ? Stone.BLACK : Stone.WHITE;
+    SClient opponent = (disconnectedClient == black) ? white : black;
+    
+    LOGGER.log(Level.WARNING, "Client {0} ({1}) disconnected during active game.", 
+              new Object[]{disconnectedClient.id, disconnectedColor});
+
+    // Zamanlayıcıları durdur
+    blackTimer.stop();
+    whiteTimer.stop();
+
+    // Oturumu bitir
+    sessionActive = false; 
+    
+    // Oyunu bitir
+    if (!state.isOver()) { 
+        state.resign(); // Bağlantısı kopan oyuncu pes etmiş sayılır
+    }
+    
+    // Sadece hala bağlı olan rakibe bilgi gönder
+    if (opponent != null && opponent.isConnected()) {
+        try {
+            int sb = state.scoreFor(Stone.BLACK);
+            int sw = state.scoreFor(Stone.WHITE);
+            String result = sb + "," + sw + "," + disconnectedColor + " bağlantısı koptu.";
+            opponent.send(new Message(Message.Type.GAME_OVER, result));
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "Error sending disconnect notification to opponent", e);
+        }
+    }
+
+    // Sunucuya oyunun bittiğini bildir
+    server.gameEnded(black, white);
+}
     private void broadcastBoard() throws IOException {
         if (!sessionActive) return;
         var json = BoardSerializer.toJson(state.board());
@@ -183,42 +348,25 @@ public class GameSession {
         sendToClient(white, whiteMsg, "score to white");
     }
 
-    private void finish(String reason) throws IOException {
-        if (!sessionActive) return; // Zaten bittiyse tekrar bitirme mesajı gönderme
-
-        sessionActive = false; // Oturumu pasif yap
-        int sb = state.scoreFor(Stone.BLACK);
-        int sw = state.scoreFor(Stone.WHITE);
-        String result = sb + "," + sw + "," + reason;
-        var m = new Message(Message.Type.GAME_OVER, result);
-        LOGGER.log(Level.INFO, "Game Over. Reason: {0}. Score B/W: {1}/{2}", new Object[]{reason, sb, sw});
-        sendToClient(black, m, "game over to black");
-        sendToClient(white, m, "game over to white");
-
-        // Oturum bittikten sonra istemcilerin bağlantısını kapatmak gerekli mi?
-        // Şimdilik açık bırakalım, yeni oyun için lobiye dönebilirler.
-        // black.closeConnection(); // Opsiyonel
-        // white.closeConnection(); // Opsiyonel
-    }
 
     // Mesaj gönderme için yardımcı metod (hata yakalama ile)
-    private void sendToClient(SClient client, Message message, String description) throws IOException {
-        if (client == null) return;
-        try {
-            // İstemcinin hala bağlı olup olmadığını kontrol et (tamamen güvenilir değil ama bir önlem)
-            if (client.sock != null && client.sock.isConnected() && !client.sock.isClosed()) {
-                client.send(message);
-            } else {
-                LOGGER.log(Level.WARNING, "Cannot send {0}, client {1} seems disconnected.", 
-                          new Object[]{description, client.id});
-            }
-        } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "IOException sending " + description + " to client " + client.id, e);
-            // Bağlantı hatası oluştuysa istemciyi oturumdan çıkar (handleDisconnect çağrılır)
-            handleDisconnect(client);
-        }
+private void sendToClient(SClient client, Message message, String description) throws IOException {
+    if (client == null || !sessionActive) return;
+    
+    // İstemcinin hala bağlı olup olmadığını kontrol et
+    if (!client.isConnected()) {
+        LOGGER.log(Level.WARNING, "Cannot send {0}, client {1} seems disconnected.", 
+                  new Object[]{description, client.id});
+        return;
     }
-
+    
+    try {
+        client.send(message);
+    } catch (IOException e) {
+        LOGGER.log(Level.SEVERE, "IOException sending " + description + " to client " + client.id, e);
+        throw e; // Yeniden fırlat, böylece üst metot gerekirse handleDisconnect'i çağırabilir
+    }
+}
     // Aktif olmayan oturumda gelen istekleri ele almak için
     private void handleInactiveSession(SClient from, String action) {
         LOGGER.log(Level.WARNING, "Client {0} attempted action '{1}' on an inactive/finished session.", 

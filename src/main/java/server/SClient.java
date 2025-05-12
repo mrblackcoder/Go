@@ -18,19 +18,56 @@ public class SClient extends Thread {
     private final Server hub;
     private GameSession session;
     private boolean running = true;
+    private boolean inGame = false; // Oyuncu şu an oyunda mı
     private static final Logger LOGGER = Logger.getLogger(SClient.class.getName());
 
     public SClient(Socket s, Server hub) throws Exception {
-        this.sock = s; this.hub = hub;
+        this.sock = s; 
+        this.hub = hub;
         this.id = hub.nextId();
-        this.in = s.getInputStream(); this.out = s.getOutputStream();
+        this.in = s.getInputStream(); 
+        this.out = s.getOutputStream();
     }
 
-    public void bindSession(GameSession gs) { this.session = gs; }
+    public void bindSession(GameSession gs) { 
+        this.session = gs; 
+        this.inGame = true;
+    }
+    
+    public void clearSession() {
+        this.session = null;
+        this.inGame = false;
+    }
+    
+    public boolean isInGame() {
+        return inGame;
+    }
+    
+    public void setInGame(boolean inGame) {
+        this.inGame = inGame;
+    }
+    
+    /**
+     * Bağlantı durumunu kontrol eder.
+     * 
+     * @return true bağlantı aktifse, false değilse
+     */
+    public boolean isConnected() {
+        return running && sock != null && !sock.isClosed() && sock.isConnected();
+    }
     
     public void send(Message m) throws IOException { 
-        IOUtil.writeMessage(out, m); 
-        LOGGER.log(Level.INFO, "Sent to client {0}: {1}#{2}", new Object[]{id, m.type(), m.payload()});
+        if (!isConnected()) {
+            throw new IOException("Connection is closed");
+        }
+        
+        try {
+            IOUtil.writeMessage(out, m); 
+            LOGGER.log(Level.INFO, "Sent to client {0}: {1}#{2}", new Object[]{id, m.type(), m.payload()});
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "Error sending to client " + id, e);
+            throw e; // Yeniden fırlat, böylece çağıran metot uygun şekilde ele alabilir
+        }
     }
     
     /**
@@ -124,6 +161,14 @@ public class SClient extends Thread {
                 }
                 break;
                 
+            case READY_FOR_GAME:
+                // Yeni oyun için hazır işareti
+                if (!inGame) {
+                    hub.addToWaitingQueue(this);
+                    hub.checkAndCreateMatch();
+                }
+                break;
+                
             case CHAT_BROADCAST:
             case TO_CLIENT:
                 // Sohbet mesajı
@@ -141,7 +186,7 @@ public class SClient extends Thread {
                     }
                 } else {
                     // Genel sohbet mesajı veya hatalı format
-                    send(new Message(Message.Type.ERROR, "Mesaj iletilemedi"));
+                    send(new Message(Message.Type.ERROR, "Mesaj iletilemedi. Aktif bir oyunda değilsiniz."));
                 }
                 break;
                 

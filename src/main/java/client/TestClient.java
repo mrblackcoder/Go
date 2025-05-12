@@ -1,13 +1,11 @@
-
-// --- File: client/TestClient.java ---
 package client;
 
 import common.Message;
 
 public class TestClient {
     public static void main(String[] args) throws Exception {
-        CClient c = new CClient(args.length>0?args[0]:"localhost",
-                               args.length>1?Integer.parseInt(args[1]):6000,
+        CClient c = new CClient(args.length>0?args[0]:"51.20.252.52", // Varsayılan sunucu adresi güncellendi
+                               args.length>1?Integer.parseInt(args[1]):5000, // Port 5000 olarak güncellendi
                                null);
         c.start();
         java.util.Scanner sc = new java.util.Scanner(System.in);

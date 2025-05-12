@@ -14,11 +14,15 @@ public class SoundEffects {
     private static final Map<String, Clip> soundClips = new HashMap<>();
     private static boolean soundEnabled = true;
     
+    // Sound effect constants
     public static final String STONE_PLACE = "stone_place";
     public static final String CAPTURE = "capture";
     public static final String GAME_START = "game_start";
     public static final String GAME_END = "game_end";
     public static final String ERROR = "error";
+    // Yeni zaman uyarı sesleri eklendi
+    public static final String TIME_WARNING = "time_warning";
+    public static final String TIME_CRITICAL = "time_critical";
     
     static {
         // Load sound clips
@@ -27,6 +31,10 @@ public class SoundEffects {
         loadClip(GAME_START, "sounds/game_start.wav");
         loadClip(GAME_END, "sounds/game_end.wav");
         loadClip(ERROR, "sounds/error.wav");
+        
+        // Yeni zaman uyarı sesleri
+        loadClip(TIME_WARNING, "sounds/time_warning.wav");
+        loadClip(TIME_CRITICAL, "sounds/time_critical.wav");
     }
     
     /**
@@ -40,6 +48,8 @@ public class SoundEffects {
             URL url = SoundEffects.class.getClassLoader().getResource(path);
             if (url == null) {
                 System.err.println("Could not find sound file: " + path);
+                // Ses dosyası yoksa geçersiz bir ses kullanma
+                // Bu sadece uyarı ver ve devam et
                 return;
             }
             
@@ -48,8 +58,7 @@ public class SoundEffects {
             clip.open(audioStream);
             soundClips.put(name, clip);
         } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
-            System.err.println("Error loading sound clip: " + path);
-            e.printStackTrace();
+            System.err.println("Error loading sound clip: " + path + " - " + e.getMessage());
         }
     }
     

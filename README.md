@@ -1,4 +1,4 @@
-## Project Report: Networked Go Game
+Networked Go Game
 
 **[MEHMET TAHA BOYNİKOĞU]**
 **[2121251034]**

@@ -11,7 +11,6 @@ package game.go.model;
 public class Test {
     public static void main(String[] args) {
     Board b = new Board(5);
-    // köşe iki siyah taşla kapat
     b.placeStone(new Point(0,1), Stone.BLACK);
     b.placeStone(new Point(1,0), Stone.BLACK);
     int area = b.areaControlledBy(Stone.BLACK);

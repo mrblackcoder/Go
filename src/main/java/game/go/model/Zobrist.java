@@ -5,7 +5,7 @@ import java.util.Random;
 
 public final class Zobrist {
 
-    private static final int MAX = 25;                // desteklenen en büyük tahta
+    private static final int MAX = 25;
     private static final long[][][] TABLE = new long[MAX][MAX][3];
 
     static {

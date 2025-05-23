@@ -1,4 +1,3 @@
-// --- File: client/ConsoleClient.java ---
 package client;
 
 import common.IOUtil;
@@ -9,9 +8,10 @@ import java.net.Socket;
 import java.util.Scanner;
 
 public class ConsoleClient {
+
     public static void main(String[] args) throws Exception {
-        String host = args.length > 0 ? args[0] : "localhost";
-        int port = args.length > 1 ? Integer.parseInt(args[1]) : 6000;
+        String host = args.length > 0 ? args[0] : "";
+        int port = args.length > 1 ? Integer.parseInt(args[1]) : 5000;
         Socket socket = new Socket(host, port);
         System.out.println("Connected to " + host + ":" + port);
 
@@ -20,7 +20,9 @@ public class ConsoleClient {
             try {
                 while (true) {
                     Message m = IOUtil.readMessage(in);
-                    if (m == null) break;
+                    if (m == null) {
+                        break;
+                    }
                     System.out.printf("RECV ▶ %s#%s%n", m.type(), m.payload());
                 }
             } catch (Exception e) {
@@ -33,7 +35,9 @@ public class ConsoleClient {
         System.out.println("Enter commands like MOVE#3,3 or PASS#");
         while (sc.hasNextLine()) {
             String line = sc.nextLine().trim();
-            if (line.isEmpty()) continue;
+            if (line.isEmpty()) {
+                continue;
+            }
             String[] parts = line.split("#", 2);
             try {
                 Message.Type t = Message.Type.valueOf(parts[0]);

@@ -36,6 +36,7 @@ public class ScoringDialog extends JFrame {
     public ScoringDialog(GameState gameState) {
         super("Game Scoring");
         this.gameState = gameState;
+        // DÜZELTME: getKomi() metodunu çağırıyoruz (GameState'e eklendi)
         this.komi = gameState.getKomi();
         
         // Create components

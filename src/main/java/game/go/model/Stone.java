@@ -1,10 +1,5 @@
-
-// --- File: game/go/model/Stone.java ---
 package game.go.model;
 
-/**
- * Taş tipi: BOŞ, SİYAH veya BEYAZ.
- */
 public enum Stone {
     EMPTY, BLACK, WHITE;
 

@@ -12,7 +12,6 @@ public record Point(int x, int y) {
     public Point left()  { return new Point(x - 1, y); }
     public Point right() { return new Point(x + 1, y); }
 
-    /** Utility: "12,5" formatından Point üret */
     public static Point fromCsv(String csv) {
         String[] parts = csv.split(",");
         return new Point(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));

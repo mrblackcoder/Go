@@ -3,22 +3,24 @@ package game.go.util;
 import game.go.model.Point;
 import game.go.model.Stone;
 import java.io.*;
-import java.text.ParseException;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Records and saves game moves in SGF format.
- * Fixed to properly record all game moves regardless of timing.
+ * Go oyunu hamlelerini kaydeden basitleştirilmiş sınıf.
+ * Sadece oyun kaydetme özelliklerini içerir, yükleme özellikleri kaldırılmıştır.
  */
 public class GameRecorder {
     
+    private static final Logger LOGGER = Logger.getLogger(GameRecorder.class.getName());
+    
     /**
-     * Represents a single move in the game
+     * Hamle bilgisini temsil eden iç sınıf
      */
-    public static class Move {
+    public static class Move implements Serializable {
         private final Point point;
         private final boolean isPass;
         private final boolean isResign;
@@ -26,11 +28,15 @@ public class GameRecorder {
         private final long timestamp;
         
         /**
-         * Creates a new move at the specified point
-         * @param point The position of the move
-         * @param player The player making the move
+         * Normal hamle oluşturur
          */
         public Move(Point point, Stone player) {
+            if (point == null) {
+                throw new IllegalArgumentException("Point cannot be null for a regular move");
+            }
+            if (player == null) {
+                throw new IllegalArgumentException("Player cannot be null");
+            }
             this.point = point;
             this.isPass = false;
             this.isResign = false;
@@ -39,12 +45,15 @@ public class GameRecorder {
         }
         
         /**
-         * Creates a new pass or resign move
-         * @param isPass True if this is a pass move
-         * @param isResign True if this is a resignation
-         * @param player The player making the move
+         * Pas veya istifa hamlesi oluşturur
          */
         public Move(boolean isPass, boolean isResign, Stone player) {
+            if (player == null) {
+                throw new IllegalArgumentException("Player cannot be null");
+            }
+            if (isPass && isResign) {
+                throw new IllegalArgumentException("A move cannot be both pass and resign");
+            }
             this.point = null;
             this.isPass = isPass;
             this.isResign = isResign;
@@ -53,8 +62,7 @@ public class GameRecorder {
         }
         
         /**
-         * Converts the move to SGF format
-         * @return SGF formatted move
+         * Hamleyi SGF formatına dönüştürür
          */
         public String toSgf() {
             if (isResign) {
@@ -65,31 +73,16 @@ public class GameRecorder {
                 char x = (char)('a' + point.x());
                 char y = (char)('a' + point.y());
                 return player == Stone.BLACK ? "B[" + x + y + "]" : "W[" + x + y + "]";
-            } else {
-                return ""; // Invalid move, return empty string
             }
+            return ""; 
         }
         
         // Getters
-        public Point getPoint() {
-            return point;
-        }
-        
-        public boolean isPass() {
-            return isPass;
-        }
-        
-        public boolean isResign() {
-            return isResign;
-        }
-        
-        public Stone getPlayer() {
-            return player;
-        }
-        
-        public long getTimestamp() {
-            return timestamp;
-        }
+        public Point getPoint() { return point; }
+        public boolean isPass() { return isPass; }
+        public boolean isResign() { return isResign; }
+        public Stone getPlayer() { return player; }
+        public long getTimestamp() { return timestamp; }
         
         @Override
         public String toString() {
@@ -99,211 +92,254 @@ public class GameRecorder {
                 return player + " passed";
             } else if (point != null) {
                 return player + " played at (" + point.x() + "," + point.y() + ")";
-            } else {
-                return "Invalid move";
             }
+            return "Invalid move"; 
         }
     }
     
-    private final List<Move> moves;
+    // Hamleleri içeren liste
+    private final List<Move> moves = new ArrayList<>();
+    
+    // Oyun bilgileri
     private final int boardSize;
     private final String blackPlayer;
     private final String whitePlayer;
     private final Date gameDate;
     private double komi = 6.5;
+    
+    // Durum değişkenleri
     private boolean recording = true;
+    private boolean gameFinished = false;
     
     /**
-     * Creates a new game recorder
-     * @param boardSize Size of the game board
-     * @param blackPlayer Name of the black player
-     * @param whitePlayer Name of the white player
+     * Yeni bir oyun kaydedici oluşturur
      */
     public GameRecorder(int boardSize, String blackPlayer, String whitePlayer) {
+        if (boardSize < 1) {
+            throw new IllegalArgumentException("Board size must be positive");
+        }
         this.boardSize = boardSize;
-        this.blackPlayer = blackPlayer;
-        this.whitePlayer = whitePlayer;
+        this.blackPlayer = blackPlayer != null ? blackPlayer : "Black";
+        this.whitePlayer = whitePlayer != null ? whitePlayer : "White";
         this.gameDate = new Date();
-        this.moves = new ArrayList<>();
+        
+        LOGGER.log(Level.INFO, "GameRecorder: Created new recorder with board size {0}", boardSize);
     }
     
     /**
-     * Creates a new game recorder with specified date
-     * @param boardSize Size of the game board
-     * @param blackPlayer Name of the black player
-     * @param whitePlayer Name of the white player
-     * @param gameDate Date of the game
+     * Belirtilen noktada bir hamleyi kaydeder
      */
-    public GameRecorder(int boardSize, String blackPlayer, String whitePlayer, Date gameDate) {
-        this.boardSize = boardSize;
-        this.blackPlayer = blackPlayer;
-        this.whitePlayer = whitePlayer;
-        this.gameDate = gameDate != null ? gameDate : new Date();
-        this.moves = new ArrayList<>();
-    }
-    
-    /**
-     * Records a move at the specified point
-     * @param p The position of the move
-     * @param player The player making the move
-     */
-    public void recordMove(Point p, Stone player) {
-        if (!recording) return;
+    public boolean recordMove(Point p, Stone player) {
+        if (!recording || gameFinished) {
+            LOGGER.warning("GameRecorder: Recording disabled or game finished, move not recorded");
+            return false;
+        }
         
         if (p == null || player == null) {
-            System.err.println("Warning: Attempted to record move with null point or player");
-            return;
+            LOGGER.warning("GameRecorder: Cannot record move with null point or player");
+            return false;
         }
         
-        System.out.println("Recording move: " + player + " at (" + p.x() + "," + p.y() + ")");
-        
-        Move move = new Move(p, player);
-        moves.add(move);
-        
-        // Debug: Print move count after recording
-        System.out.println("Total moves recorded: " + moves.size());
+        try {
+            Move newMove = new Move(p, player);
+            moves.add(newMove);
+            LOGGER.log(Level.INFO, "GameRecorder: Recorded move: {0} at ({1},{2}). Total moves: {3}", 
+                      new Object[]{player, p.x(), p.y(), moves.size()});
+            return true;
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "GameRecorder: Error recording move", e);
+            return false;
+        }
     }
     
     /**
-     * Records a pass move
-     * @param player The player passing
+     * Pas hamlesini kaydeder
      */
-    public void recordPass(Stone player) {
-        if (!recording) return;
+    public boolean recordPass(Stone player) {
+        if (!recording || gameFinished) {
+            LOGGER.warning("GameRecorder: Recording disabled or game finished, pass not recorded");
+            return false;
+        }
         
         if (player == null) {
-            System.err.println("Warning: Attempted to record pass with null player");
-            return;
+            LOGGER.warning("GameRecorder: Cannot record pass with null player");
+            return false;
         }
         
-        System.out.println("Recording pass by " + player);
-        
-        Move move = new Move(true, false, player);
-        moves.add(move);
-        
-        // Debug: Print move count after recording
-        System.out.println("Total moves recorded: " + moves.size());
+        try {
+            Move newMove = new Move(true, false, player);
+            moves.add(newMove);
+            LOGGER.log(Level.INFO, "GameRecorder: Recorded pass by {0}. Total moves: {1}", 
+                      new Object[]{player, moves.size()});
+            
+            // İki oyuncu üst üste pas geçtiyse oyunu bitmiş olarak işaretle
+            checkConsecutivePasses();
+            
+            return true;
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "GameRecorder: Error recording pass", e);
+            return false;
+        }
     }
     
     /**
-     * Records a resignation
-     * @param player The player resigning
+     * İstifa hamlesini kaydeder
      */
-    public void recordResign(Stone player) {
-        if (!recording) return;
+    public boolean recordResign(Stone player) {
+        if (!recording || gameFinished) {
+            LOGGER.warning("GameRecorder: Recording disabled or game finished, resignation not recorded");
+            return false;
+        }
         
         if (player == null) {
-            System.err.println("Warning: Attempted to record resignation with null player");
-            return;
+            LOGGER.warning("GameRecorder: Cannot record resignation with null player");
+            return false;
         }
         
-        System.out.println("Recording resignation by " + player);
-        
-        Move move = new Move(false, true, player);
-        moves.add(move);
-        
-        // Debug: Print move count after recording
-        System.out.println("Total moves recorded: " + moves.size());
-    }
-    
-    /**
-     * Sets the komi value
-     * @param komi The komi value
-     */
-    public void setKomi(double komi) {
-        this.komi = komi;
-    }
-    
-    /**
-     * Enables or disables recording
-     * @param enable True to enable recording, false to disable
-     */
-    public void enableRecording(boolean enable) {
-        this.recording = enable;
-        System.out.println("Recording " + (enable ? "enabled" : "disabled"));
-    }
-    
-    /**
-     * Checks if recording is enabled
-     * @return True if recording is enabled
-     */
-    public boolean isRecording() {
-        return recording;
-    }
-    
-    /**
-     * Saves the game record in SGF format
-     * @param filePath Path to save the SGF file
-     * @throws IOException If file operations fail
-     */
-    public void saveToSgf(String filePath) throws IOException {
-        if (moves.isEmpty()) {
-            throw new IOException("No moves to save");
+        try {
+            Move newMove = new Move(false, true, player);
+            moves.add(newMove);
+            gameFinished = true;
+            LOGGER.log(Level.INFO, "GameRecorder: Recorded resignation by {0}. Total moves: {1}. Game marked as finished.", 
+                      new Object[]{player, moves.size()});
+            return true;
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "GameRecorder: Error recording resignation", e);
+            return false;
         }
-        
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath))) {
-            // SGF format header
-            writer.write("(;FF[4]GM[1]SZ[" + boardSize + "]");
-            writer.newLine();
+    }
+    
+    /**
+     * Son iki hamlenin pas olup olmadığını kontrol eder
+     */
+    private void checkConsecutivePasses() {
+        if (moves.size() >= 2) {
+            Move lastMove = moves.get(moves.size() - 1);
+            Move secondLastMove = moves.get(moves.size() - 2);
             
-            // Player information
-            writer.write("PB[" + blackPlayer + "]PW[" + whitePlayer + "]");
-            writer.newLine();
-            
-            // Date
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-            writer.write("DT[" + sdf.format(gameDate) + "]");
-            writer.newLine();
-            
-            // Komi
-            writer.write("KM[" + komi + "]");
-            writer.newLine();
-            
-            // Application info
-            writer.write("AP[Go Game:1.0]");
-            writer.newLine();
-            
-            // Moves
-            for (Move move : moves) {
-                String sgfMove = move.toSgf();
-                if (!sgfMove.isEmpty()) {
-                    writer.write(sgfMove);
-                    writer.newLine();
-                }
+            if (lastMove.isPass() && secondLastMove.isPass()) {
+                LOGGER.info("GameRecorder: Two consecutive passes detected, marking game as finished");
+                gameFinished = true;
             }
-            
-            // End SGF
-            writer.write(")");
+        }
+    }
+    
+    /**
+     * Hamlelerin doğru kaydedildiğini doğrular
+     */
+    public void verifyRecordedMoves() {
+        LOGGER.info("======= MOVE VERIFICATION =======");
+        LOGGER.log(Level.INFO, "Total recorded moves: {0}", moves.size());
+        
+        // Oyun bilgilerini göster
+        LOGGER.log(Level.INFO, "Game details: {0} (Black) vs {1} (White)", 
+                  new Object[]{blackPlayer, whitePlayer});
+        LOGGER.log(Level.INFO, "Board size: {0}x{0}, Komi: {1}", 
+                  new Object[]{boardSize, komi});
+        
+        // Her hamleyi yazdır
+        for (int i = 0; i < moves.size(); i++) {
+            LOGGER.log(Level.INFO, "Move {0}: {1}", new Object[]{i + 1, moves.get(i)});
         }
         
-        System.out.println("Successfully saved " + moves.size() + " moves to " + filePath);
+        LOGGER.info("================================");
     }
     
     /**
-     * Returns the list of moves
-     * @return List of recorded moves
+     * Oyun kaydını SGF formatında kaydeder
      */
+    /**
+ * Oyun kaydını SGF formatında kaydeder
+ * 
+ * @param filePath Kaydedilecek dosya yolu
+ * @return İşlem başarılı ise true, başarısız ise false
+ */
+public boolean saveToSgf(String filePath) {
+    if (moves.isEmpty()) {
+        LOGGER.warning("GameRecorder: No moves to save");
+        return false;
+    }
+    
+    File file = new File(filePath);
+    File parentDir = file.getParentFile();
+    if (parentDir != null && !parentDir.exists()) {
+        if (!parentDir.mkdirs()) {
+            LOGGER.warning("GameRecorder: Failed to create directories for: " + filePath);
+            return false;
+        }
+    }
+    
+    try (BufferedWriter writer = new BufferedWriter(
+            new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
+        
+        // SGF format başlığı
+        writer.write("(;FF[4]GM[1]SZ[" + boardSize + "]");
+        writer.newLine();
+        
+        // Oyuncu bilgileri
+        writer.write("PB[" + blackPlayer + "]PW[" + whitePlayer + "]");
+        writer.newLine();
+        
+        // Tarih
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        writer.write("DT[" + sdf.format(gameDate) + "]");
+        writer.newLine();
+        
+        // Komi
+        writer.write("KM[" + komi + "]");
+        writer.newLine();
+        
+        // Uygulama bilgisi
+        writer.write("AP[Go Game:2.0]");
+        writer.newLine();
+        
+        // Hamleleri yaz
+        int writtenMoves = 0;
+        for (Move move : moves) {
+            String sgfMove = move.toSgf();
+            if (!sgfMove.isEmpty()) {
+                writer.write(sgfMove);
+                writer.newLine();
+                writtenMoves++;
+            }
+        }
+        
+        // SGF sonu
+        writer.write(")");
+        
+        LOGGER.log(Level.INFO, "GameRecorder: Successfully saved {0} moves to {1}", 
+                  new Object[]{writtenMoves, filePath});
+        return true;
+    } catch (IOException e) {
+        LOGGER.log(Level.SEVERE, "GameRecorder: Error saving SGF file: {0}", e.getMessage());
+        return false;
+    }
+}
+    
+    /**
+     * Tüm kayıtlı hamleleri yazdırır
+     */
+    public void printMoves() {
+        System.out.println("=== GameRecorder: Recorded Moves ===");
+        System.out.println("Total moves: " + moves.size());
+        
+        for (int i = 0; i < moves.size(); i++) {
+            System.out.println((i + 1) + ": " + moves.get(i));
+        }
+        
+        System.out.println("================================");
+    }
+    
+    // Getter ve setter metotları
+    
     public List<Move> getMoves() {
-        // Return a deep copy to prevent modification from outside
-        List<Move> movesCopy = new ArrayList<>(moves.size());
-        movesCopy.addAll(moves);
-        System.out.println("Returning " + movesCopy.size() + " moves");
-        return movesCopy;
+        return Collections.unmodifiableList(new ArrayList<>(moves));
     }
     
-    /**
-     * Returns the total number of moves
-     * @return Number of recorded moves
-     */
     public int getMoveCount() {
         return moves.size();
     }
     
-    /**
-     * Returns the move at the specified index
-     * @param index Index of the move
-     * @return The move at the specified index, or null if index is out of bounds
-     */
     public Move getMove(int index) {
         if (index >= 0 && index < moves.size()) {
             return moves.get(index);
@@ -311,83 +347,45 @@ public class GameRecorder {
         return null;
     }
     
-    /**
-     * Prints all recorded moves to the console (for debugging)
-     */
-    public void printMoves() {
-        System.out.println("=== Recorded Moves ===");
-        System.out.println("Total moves: " + moves.size());
-        for (int i = 0; i < moves.size(); i++) {
-            System.out.println(i + ": " + moves.get(i));
-        }
-        System.out.println("=====================");
+    public void setKomi(double komi) {
+        this.komi = komi;
     }
     
-    /**
-     * Returns the board size
-     * @return Board size
-     */
+    public void enableRecording(boolean enable) {
+        this.recording = enable;
+        LOGGER.log(Level.INFO, "GameRecorder: Recording {0}", enable ? "enabled" : "disabled");
+    }
+    
+    public void markGameFinished() {
+        this.gameFinished = true;
+        LOGGER.info("GameRecorder: Game marked as finished");
+    }
+    
     public int getBoardSize() {
         return boardSize;
     }
     
-    /**
-     * Returns the black player's name
-     * @return Black player's name
-     */
     public String getBlackPlayer() {
         return blackPlayer;
     }
     
-    /**
-     * Returns the white player's name
-     * @return White player's name
-     */
     public String getWhitePlayer() {
         return whitePlayer;
     }
     
-    /**
-     * Returns the game date
-     * @return Game date
-     */
     public Date getGameDate() {
-        return gameDate;
+        return new Date(gameDate.getTime());
     }
     
-    /**
-     * Returns the komi value
-     * @return Komi value
-     */
     public double getKomi() {
         return komi;
     }
     
-    /**
-     * Loads a game record from an SGF file
-     * @param filePath Path to the SGF file
-     * @return GameRecorder with the loaded game
-     * @throws IOException If file reading fails
-     * @throws ParseException If SGF parsing fails
-     */
-    public static GameRecorder loadFromSgf(String filePath) throws IOException, ParseException {
-        return SGFLoader.loadFromFile(filePath);
+    public boolean isRecording() {
+        return recording;
     }
     
-    /**
-     * Clears all moves
-     */
-    public void clearMoves() {
-        moves.clear();
-        System.out.println("Cleared all recorded moves");
-    }
-    
-    /**
-     * Adds a comment to the last move
-     * @param comment Comment to add
-     */
-    public void addComment(String comment) {
-        // This is a stub for future implementation
-        // SGF supports comments but we don't store them in this implementation
+    public boolean isGameFinished() {
+        return gameFinished;
     }
 }

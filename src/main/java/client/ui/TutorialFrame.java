@@ -3,13 +3,17 @@ package client.ui;
 import game.go.model.Point;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
@@ -22,8 +26,8 @@ public class TutorialFrame extends JFrame {
     
     private final GoBoardPanel boardPanel;
     private final JTextArea instructionArea;
-    private final JButton nextButton;
-    private final JButton prevButton;
+    private JButton nextButton;
+    private JButton prevButton;
     private final List<TutorialStep> steps;
     private int currentStep = 0;
     
@@ -45,63 +49,44 @@ public class TutorialFrame extends JFrame {
     /**
      * Creates a new tutorial frame
      */
-    public TutorialFrame() {
-        super("Go Tutorial");
-        
-        // Create components
-        boardPanel = new GoBoardPanel();
-        instructionArea = new JTextArea(5, 40);
-        nextButton = new JButton("Next >");
-        prevButton = new JButton("< Previous");
-        
-        // Setup instruction area
-        instructionArea.setEditable(false);
-        instructionArea.setLineWrap(true);
-        instructionArea.setWrapStyleWord(true);
-        instructionArea.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        
-        // Setup layout
-        setLayout(new BorderLayout());
-        add(boardPanel, BorderLayout.CENTER);
-        
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        JScrollPane scrollPane = new JScrollPane(instructionArea);
-        bottomPanel.add(scrollPane, BorderLayout.CENTER);
-        
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttonPanel.add(prevButton);
-        buttonPanel.add(nextButton);
-        bottomPanel.add(buttonPanel, BorderLayout.SOUTH);
-        
-        add(bottomPanel, BorderLayout.SOUTH);
-        
-        // Create tutorial steps
-        steps = createTutorialSteps();
-        
-        // Add listeners
-        nextButton.addActionListener((ActionEvent e) -> {
-            if (currentStep < steps.size() - 1) {
-                currentStep++;
-                showCurrentStep();
-            }
-        });
-        
-        prevButton.addActionListener((ActionEvent e) -> {
-            if (currentStep > 0) {
-                currentStep--;
-                showCurrentStep();
-            }
-        });
-        
-        // Window settings
-        setSize(800, 800);
-        setLocationRelativeTo(null);
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        
-        // Show first step
-        showCurrentStep();
-    }
+public TutorialFrame() {
+    super("Go Oyunu Öğreticisi");
     
+    // Bileşenleri oluştur
+    boardPanel = new GoBoardPanel();
+    instructionArea = new JTextArea(10, 40);
+    nextButton = new JButton("Sonraki >");
+    prevButton = new JButton("< Önceki");
+    
+    // Geliştirilmiş kullanıcı arayüzünü kur
+    setupEnhancedUI();
+    
+    // Öğretici adımlarını oluştur
+    steps = createTutorialSteps();
+    
+    // Dinleyicileri ekle
+    nextButton.addActionListener((ActionEvent e) -> {
+        if (currentStep < steps.size() - 1) {
+            currentStep++;
+            showCurrentStep();
+        }
+    });
+    
+    prevButton.addActionListener((ActionEvent e) -> {
+        if (currentStep > 0) {
+            currentStep--;
+            showCurrentStep();
+        }
+    });
+    
+    // İlk adımı göster
+    showCurrentStep();
+    
+    // Pencere özellikleri
+    setSize(800, 800);
+    setLocationRelativeTo(null);
+    setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+}    
     /**
      * Create the tutorial steps
      */
@@ -361,6 +346,138 @@ public class TutorialFrame extends JFrame {
         setTitle("Go Tutorial - Step " + (currentStep + 1) + " of " + steps.size());
     }
     
+    private void setupEnhancedUI() {
+    // Koyu tema renkleri
+    Color DARK_BG = new Color(18, 18, 18);
+    Color DARK_SECONDARY = new Color(30, 30, 30);
+    Color DARK_BORDER = new Color(60, 60, 60);
+    Color TEXT_COLOR = new Color(230, 230, 230);
+    Color ACCENT_COLOR = new Color(52, 152, 219); // Mavi vurgu rengi
+    
+    // Ana panel ayarları
+    getContentPane().setBackground(DARK_BG);
+    setLayout(new BorderLayout(10, 10));
+    
+    // Başlık paneli
+    JPanel headerPanel = new JPanel(new BorderLayout());
+    headerPanel.setBackground(DARK_SECONDARY);
+    headerPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 2, 0, ACCENT_COLOR),
+            BorderFactory.createEmptyBorder(10, 15, 10, 15)
+    ));
+    
+    JLabel titleLabel = new JLabel("Go Oyunu Öğreticisi", JLabel.CENTER);
+    titleLabel.setFont(new Font("SansSerif", Font.BOLD, 20));
+    titleLabel.setForeground(ACCENT_COLOR);
+    
+    headerPanel.add(titleLabel, BorderLayout.CENTER);
+    add(headerPanel, BorderLayout.NORTH);
+    
+    // Tahta paneli
+    JPanel boardPanel = new JPanel(new BorderLayout(10, 10));
+    boardPanel.setBackground(DARK_BG);
+    boardPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    
+    // Tahta kenarlarında koyu kenarlık
+    JPanel boardBorder = new JPanel(new BorderLayout());
+    boardBorder.setBackground(DARK_SECONDARY);
+    boardBorder.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 1, 1, 1, DARK_BORDER),
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
+    ));
+    
+    boardBorder.add(this.boardPanel, BorderLayout.CENTER);
+    boardPanel.add(boardBorder, BorderLayout.CENTER);
+    add(boardPanel, BorderLayout.CENTER);
+    
+    // Alt panel - talimatlar ve düğmeler
+    JPanel bottomPanel = new JPanel(new BorderLayout(10, 10));
+    bottomPanel.setBackground(DARK_BG);
+    bottomPanel.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
+    
+    // Talimat paneli
+    JPanel instructionPanel = new JPanel(new BorderLayout());
+    instructionPanel.setBackground(DARK_SECONDARY);
+    instructionPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 1, 1, 1, DARK_BORDER),
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
+    ));
+    
+    // Talimat başlığı
+    JPanel instructionHeader = new JPanel(new BorderLayout());
+    instructionHeader.setBackground(DARK_SECONDARY);
+    instructionHeader.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, DARK_BORDER));
+    
+    JLabel instructionLabel = new JLabel("Öğretici Adımı", JLabel.CENTER);
+    instructionLabel.setFont(new Font("SansSerif", Font.BOLD, 16));
+    instructionLabel.setForeground(ACCENT_COLOR);
+    instructionLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+    
+    instructionHeader.add(instructionLabel, BorderLayout.CENTER);
+    
+    // Talimat metni
+    instructionArea.setEditable(false);
+    instructionArea.setLineWrap(true);
+    instructionArea.setWrapStyleWord(true);
+    instructionArea.setFont(new Font("SansSerif", Font.PLAIN, 14));
+    instructionArea.setBackground(DARK_SECONDARY);
+    instructionArea.setForeground(TEXT_COLOR);
+    instructionArea.setCaretColor(Color.WHITE);
+    
+    JScrollPane scrollPane = new JScrollPane(instructionArea);
+    scrollPane.setBorder(BorderFactory.createEmptyBorder());
+    scrollPane.getViewport().setBackground(DARK_SECONDARY);
+    
+    instructionPanel.add(instructionHeader, BorderLayout.NORTH);
+    instructionPanel.add(scrollPane, BorderLayout.CENTER);
+    
+    // Düğme paneli
+    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+    buttonPanel.setBackground(DARK_SECONDARY);
+    buttonPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+    
+    prevButton = new JButton("< Önceki");
+    prevButton.setFont(new Font("SansSerif", Font.BOLD, 14));
+    styleButtonDark(prevButton, DARK_SECONDARY);
+    
+    nextButton = new JButton("Sonraki >");
+    nextButton.setFont(new Font("SansSerif", Font.BOLD, 14));
+    styleButtonDark(nextButton, ACCENT_COLOR);
+    
+    buttonPanel.add(prevButton);
+    buttonPanel.add(nextButton);
+    
+    instructionPanel.add(buttonPanel, BorderLayout.SOUTH);
+    bottomPanel.add(instructionPanel, BorderLayout.CENTER);
+    add(bottomPanel, BorderLayout.SOUTH);
+}
+
+    /**
+ * Düğmeyi koyu tema stilinde tasarlar
+ * 
+ * @param button Stillendirilecek düğme
+ * @param color Arka plan rengi
+ */
+private void styleButtonDark(JButton button, Color color) {
+    button.setBackground(color);
+    button.setForeground(Color.WHITE);
+    button.setFocusPainted(false);
+    button.setBorderPainted(false);
+    button.setFont(new Font("SansSerif", Font.BOLD, 14));
+    button.setPreferredSize(new Dimension(120, 35));
+    button.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    
+    // Hover efekti için dinleyici ekle
+    button.addMouseListener(new java.awt.event.MouseAdapter() {
+        public void mouseEntered(java.awt.event.MouseEvent evt) {
+            button.setBackground(color.brighter());
+        }
+
+        public void mouseExited(java.awt.event.MouseEvent evt) {
+            button.setBackground(color);
+        }
+    });
+}
     /**
      * Display the tutorial
      */

@@ -1,10 +1,10 @@
 package game.go.manager;
 
+import game.go.model.Board.MoveResult;
 import game.go.model.GameState;
 import game.go.model.Point;
 import game.go.model.Stone;
 import game.go.util.GameRecorder;
-import client.ui.GameReplayFrame;
 
 /**
  * Example game manager implementation that ensures proper move recording
@@ -31,8 +31,9 @@ public class GameManager {
         this.recorder = new GameRecorder(boardSize, blackPlayerName, whitePlayerName);
         gameState.setRecorder(recorder);
         
-        System.out.println("GameManager: Initialized with recorder. Status: " + 
-                         (recorder.isRecording() ? "Recording" : "Not recording"));
+
+System.out.println("GameManager: Initialized with recorder. Status: " + 
+                 (recorder.isRecording() ? "Recording" : "Not recording"));
     }
     
     /**
@@ -63,10 +64,11 @@ public class GameManager {
      * 
      * @return True if resignation was successful
      */
-    public boolean resign() {
-        // GameState will handle recording the resignation
-        return gameState.resign().valid;
-    }
+   public boolean resign() {
+    // GameState will handle recording the resignation
+    MoveResult result = gameState.resign();
+    return result.valid;
+}
     
     /**
      * Check if recording is enabled
@@ -113,33 +115,13 @@ public class GameManager {
     }
     
     /**
-     * Show a replay of the current game
-     */
-    public void showReplay() {
-        if (recorder != null && recorder.getMoveCount() > 0) {
-            // Print debug info before showing replay
-            System.out.println("Showing replay with " + recorder.getMoveCount() + " moves");
-            recorder.printMoves();
-            
-            GameReplayFrame replayFrame = new GameReplayFrame(
-                "Game Replay: " + blackPlayerName + " vs " + whitePlayerName,
-                recorder.getMoves(),
-                gameState.board().getSize()
-            );
-            replayFrame.showReplay();
-        } else {
-            System.out.println("Cannot show replay: " + 
-                             (recorder == null ? "No recorder" : "No moves recorded"));
-        }
-    }
-    
-    /**
      * Get the current player
      * 
      * @return Current player's stone color
      */
     public Stone getCurrentPlayer() {
-        return gameState.getCurrentPlayer();
+        // DÜZELTME 2: Doğru metod çağrılıyor - toPlay() kullanılıyor
+        return gameState.toPlay();
     }
     
     /**
